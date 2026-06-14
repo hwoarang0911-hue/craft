@@ -444,15 +444,7 @@ function animate() {
   if (!window.READY && spawned && world.ready(player.pos)) {
     if (!shotMode || configureShot()) {
       framesAfterReady++;
-      if (framesAfterReady >= readySettleFrames) {
-        probePost();
-        window.READY = true;
-        window.__bootMeshed = world.meshedKeys.size;
-        if (window.__boot) {
-          window.__boot('rgba(0,110,0,.82)', '✓ 정상 실행 · chunks=' + world.meshedKeys.size
-            + (post ? '' : ' · post off') + '\n배경이 보이면 성공! 안 보이면 알려주세요.');
-        }
-      }
+      if (framesAfterReady >= readySettleFrames) { probePost(); window.READY = true; }
     }
   }
 }

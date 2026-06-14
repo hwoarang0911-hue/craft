@@ -72,15 +72,7 @@
     function err(m) { errShown = true; box('rgba(150,0,0,.92)', m); }
     window.addEventListener('error', function (e) {
       if (e && e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
-        var src = e.target.src || e.target.href || '';
-        // If the dev module 404s, the raw source is being served (GitHub Pages
-        // "Deploy from a branch"). Fall back to the committed self-contained
-        // build, which has no external scripts. Guarded against redirect loops.
-        if (/\/src\/main\.js(\?|$)/.test(src) && !/\/dist-single\//.test(location.pathname)) {
-          location.replace('dist-single/index.html' + location.search);
-          return;
-        }
-        err('✗ 리소스 로드 실패 / failed to load:\n' + src);
+        err('✗ 리소스 로드 실패 / failed to load:\n' + (e.target.src || e.target.href));
       } else if (e && e.message) {
         err('✗ 오류 / error:\n' + e.message + (e.filename ? ('\n@ ' + e.filename + ':' + e.lineno) : ''));
       }
@@ -90,15 +82,10 @@
     });
     var gl2 = false; try { gl2 = !!document.createElement('canvas').getContext('webgl2'); } catch (_) {}
     setTimeout(function () {
-      if (errShown) return;
-      if (window.__bootOK) {
-        box('rgba(0,110,0,.85)', '✓ 게임 JS 실행됨 / running. WebGL2=' + gl2
-          + (window.__bootMeshed != null ? (' · chunks=' + window.__bootMeshed) : '')
-          + '\n배경이 까many면 GPU/렌더 문제입니다 (진단용 표시).');
-      } else {
-        box('rgba(150,0,0,.92)', '✗ 게임 JS가 실행 안 됨 / bundle did NOT run.\nWebGL2=' + gl2
-          + '\n캐시 가능성 → 시크릿 창 또는 주소 뒤에 ?v=숫자 로 다시 열어보세요.\n' + navigator.userAgent);
-      }
+      // Running fine → stay invisible. Only surface a box if the bundle never ran.
+      if (errShown || window.__bootOK) return;
+      box('rgba(150,0,0,.92)', '✗ 게임 JS가 실행 안 됨 / bundle did NOT run.\nWebGL2=' + gl2
+        + '\n시크릿 창 또는 주소 뒤에 ?v=숫자 로 다시 열어보세요.\n' + navigator.userAgent);
     }, 4500);
   })();
   </script>
