@@ -28,12 +28,15 @@ jobs:
       - run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
-      - run: npm run build
+      # Deploy the SELF-CONTAINED single-file build: all JS (and the worker) is
+      # inlined into one index.html, so there is no external module to fail to
+      # load on Pages and no dependence on the URL's trailing slash.
+      - run: npm run build:single
       - uses: actions/configure-pages@v5
         with:
           enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: dist-single
       - id: deployment
         uses: actions/deploy-pages@v4
