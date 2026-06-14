@@ -51,13 +51,24 @@ if (!hasWebGL2()) {
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-} catch (e) {
-  fatal('WebGL 초기화 실패 / failed to create a WebGL context:\n' + e.message
-    + '\n하드웨어 가속을 켜고 새로고침해 보세요.');
-  throw e;
+} catch (e1) {
+  try {
+    // retry with a more permissive config — some GPUs reject high-performance/AA
+    renderer = new THREE.WebGLRenderer({ antialias: false });
+  } catch (e2) {
+    fatal('WebGL 초기화 실패 / failed to create a WebGL context:\n' + e2.message
+      + '\n하드웨어 가속을 켜고 새로고침해 보세요.');
+    throw e2;
+  }
 }
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// Set the renderer look here too, so the post-less fallback path still matches.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.88;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 app.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -70,14 +81,21 @@ const player = new Player(camera, renderer.domElement);
 const hud = new Hud(atlasCanvas);
 const interact = new Interact(world, player, camera, scene, hud, { avgColors });
 const sky = new SkySystem(scene, renderer);
-const post = new Post(renderer, scene, camera);
+// Post-processing is the most fragile part on weak/old GPUs (float render
+// targets, GTAO). If it can't be built — or later renders pure black — we fall
+// back to direct rendering so the world is always visible. `?nopost` forces it.
+let post = null;
+if (!params.has('nopost')) {
+  try { post = new Post(renderer, scene, camera); }
+  catch (e) { console.warn('post-processing unavailable, using direct render:', e); }
+}
 const critters = new Critters(scene, world);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  post.resize(window.innerWidth, window.innerHeight);
+  if (post) post.resize(window.innerWidth, window.innerHeight);
 });
 
 // ---------------------------------------------------------------- spawn
@@ -334,6 +352,54 @@ let framesAfterReady = 0;
 let readySettleFrames = shotMode ? 30 : 5;
 window.READY = false;
 const frameTimes = [];
+let postProbed = false;
+
+// Render the frame through post-processing, but degrade to a plain render the
+// instant post throws — a broken post chain must never blank the whole screen.
+function renderFrame(dt) {
+  if (post) {
+    try { post.render(dt); return; }
+    catch (e) {
+      console.warn('post-processing failed mid-run, falling back to direct render:', e);
+      post = null;
+    }
+  }
+  renderer.render(scene, camera);
+}
+
+// Some GPUs build the post chain fine but render it pure black (unsupported
+// float targets). Compare a direct render against the post output once; if the
+// post frame is effectively black while the scene is lit, drop post for good.
+function probePost() {
+  if (postProbed) return;
+  postProbed = true;
+  if (!post) return;
+  try {
+    const gl = renderer.getContext();
+    const w = renderer.domElement.width, h = renderer.domElement.height, N = 16;
+    const sx = Math.max(0, (w >> 1) - (N >> 1)), sy = Math.max(0, (h >> 1) - (N >> 1));
+    const buf = new Uint8Array(N * N * 4);
+    const lum = () => {
+      let s = 0;
+      for (let i = 0; i < buf.length; i += 4) s += buf[i] + buf[i + 1] + buf[i + 2];
+      return s / (N * N * 3);
+    };
+    renderer.setRenderTarget(null);
+    renderer.render(scene, camera);
+    gl.readPixels(sx, sy, N, N, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    const directLum = lum();
+    post.render(0);
+    gl.readPixels(sx, sy, N, N, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    const postLum = lum();
+    if (directLum > 12 && postLum < directLum * 0.18) {
+      console.warn(`post output near-black (direct=${directLum.toFixed(1)}, `
+        + `post=${postLum.toFixed(1)}); disabling post-processing`);
+      post = null;
+    }
+  } catch (e) {
+    console.warn('post probe failed:', e);
+  }
+}
 
 function animate() {
   requestAnimationFrame(animate);
@@ -349,21 +415,21 @@ function animate() {
   }
 
   const skyState = sky.update(dt, camera.position, freezeTime);
-  post.setNight(skyState.nightF);
+  if (post) post.setNight(skyState.nightF);
   // explosion flash decays each frame
   interact.flash = Math.max(0, (interact.flash || 0) - dt * 3.2);
-  post.setFlash(interact.flash * 0.6);
+  if (post) post.setFlash(interact.flash * 0.6);
   tickMaterials(materials, elapsed);
 
   // underwater handling
   const headBlock = world.getBlock(
     Math.floor(camera.position.x), Math.floor(camera.position.y), Math.floor(camera.position.z));
   const under = headBlock === B.WATER;
-  post.setUnderwater(under);
+  if (post) post.setUnderwater(under);
   sky.setUnderwater(under);
 
   renderer.info.reset();
-  post.render(dt);
+  renderFrame(dt);
   lastInfo = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
 
   frameTimes.push(dt);
@@ -375,7 +441,7 @@ function animate() {
   if (!window.READY && spawned && world.ready(player.pos)) {
     if (!shotMode || configureShot()) {
       framesAfterReady++;
-      if (framesAfterReady >= readySettleFrames) window.READY = true;
+      if (framesAfterReady >= readySettleFrames) { probePost(); window.READY = true; }
     }
   }
 }
