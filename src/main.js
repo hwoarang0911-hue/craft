@@ -16,7 +16,46 @@ const params = new URLSearchParams(location.search);
 const shotMode = params.get('shot');
 
 const app = document.getElementById('app');
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+
+// Surface crashes the player would otherwise never see. A thrown WebGL/context
+// error aborts the rest of this module, leaving only the static "Click to play"
+// hint on screen — which reads as "the menu shows but nothing loads".
+let fatalShown = false;
+function fatal(msg) {
+  if (fatalShown) return;
+  fatalShown = true;
+  const hint = document.getElementById('hint');
+  if (!hint) return;
+  hint.style.display = '';
+  hint.innerHTML = '<b>Voxelscape — 실행 불가 / cannot start</b><br>'
+    + '<span style="font-size:13px;opacity:0.9;white-space:pre-wrap;line-height:1.5">'
+    + String(msg).replace(/</g, '&lt;') + '</span>';
+}
+window.addEventListener('error', (e) => { if (e && e.message) fatal(e.message); });
+window.addEventListener('unhandledrejection', (e) => {
+  fatal((e && e.reason && e.reason.message) || (e && e.reason) || 'unknown error');
+});
+
+// three r184 renders only on WebGL2; give a clear reason instead of a dead screen.
+function hasWebGL2() {
+  try { return !!document.createElement('canvas').getContext('webgl2'); }
+  catch { return false; }
+}
+if (!hasWebGL2()) {
+  fatal('이 브라우저/기기에서 WebGL2를 쓸 수 없습니다.\n'
+    + 'No WebGL2 available. Turn on hardware acceleration, update the browser,\n'
+    + 'or open in desktop Chrome / Edge / Firefox.');
+  throw new Error('WebGL2 unavailable');
+}
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  fatal('WebGL 초기화 실패 / failed to create a WebGL context:\n' + e.message
+    + '\n하드웨어 가속을 켜고 새로고침해 보세요.');
+  throw e;
+}
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 app.appendChild(renderer.domElement);

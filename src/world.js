@@ -20,6 +20,11 @@ export class World {
 
     this.worker = new WorldWorker();
     this.worker.onmessage = (ev) => this.onMessage(ev.data);
+    // route a worker failure (e.g. blocked inline worker) to the on-screen error
+    this.worker.onerror = (e) => {
+      window.dispatchEvent(new ErrorEvent('error',
+        { message: 'world worker failed: ' + (e.message || 'could not start') }));
+    };
     this.worker.postMessage({ type: 'init', seed: SEED });
   }
 
