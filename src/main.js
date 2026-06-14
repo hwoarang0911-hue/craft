@@ -12,6 +12,9 @@ import { Post } from './post.js';
 import { Hud } from './hud.js';
 import { Critters } from './entities.js';
 
+// Signal the HTML boot-watchdog that the game bundle actually started executing.
+window.__bootOK = true;
+
 const params = new URLSearchParams(location.search);
 const shotMode = params.get('shot');
 
@@ -441,7 +444,15 @@ function animate() {
   if (!window.READY && spawned && world.ready(player.pos)) {
     if (!shotMode || configureShot()) {
       framesAfterReady++;
-      if (framesAfterReady >= readySettleFrames) { probePost(); window.READY = true; }
+      if (framesAfterReady >= readySettleFrames) {
+        probePost();
+        window.READY = true;
+        window.__bootMeshed = world.meshedKeys.size;
+        if (window.__boot) {
+          window.__boot('rgba(0,110,0,.82)', '✓ 정상 실행 · chunks=' + world.meshedKeys.size
+            + (post ? '' : ' · post off') + '\n배경이 보이면 성공! 안 보이면 알려주세요.');
+        }
+      }
     }
   }
 }

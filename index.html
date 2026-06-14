@@ -50,6 +50,50 @@
     }
     #hint b { color: #ffd98a; }
   </style>
+  <script>
+  /* Plain (non-module) boot watchdog. Runs even if the game module fails to
+     load/parse, so a blank screen always reports WHY (on the real device). */
+  (function () {
+    var errShown = false;
+    function box(color, msg) {
+      var el = document.getElementById('boot-status');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'boot-status';
+        el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;max-width:94vw;'
+          + 'font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#fff;background:' + color
+          + ';padding:8px 10px;border-radius:8px;white-space:pre-wrap;word-break:break-word;'
+          + 'box-shadow:0 2px 10px rgba(0,0,0,.55)';
+        (document.body || document.documentElement).appendChild(el);
+      } else { el.style.background = color; }
+      el.textContent = msg;
+    }
+    window.__boot = function (c, m) { if (!errShown) box(c, m); };
+    function err(m) { errShown = true; box('rgba(150,0,0,.92)', m); }
+    window.addEventListener('error', function (e) {
+      if (e && e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
+        err('✗ 리소스 로드 실패 / failed to load:\n' + (e.target.src || e.target.href));
+      } else if (e && e.message) {
+        err('✗ 오류 / error:\n' + e.message + (e.filename ? ('\n@ ' + e.filename + ':' + e.lineno) : ''));
+      }
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      err('✗ 오류(promise):\n' + ((e.reason && e.reason.message) || e.reason));
+    });
+    var gl2 = false; try { gl2 = !!document.createElement('canvas').getContext('webgl2'); } catch (_) {}
+    setTimeout(function () {
+      if (errShown) return;
+      if (window.__bootOK) {
+        box('rgba(0,110,0,.85)', '✓ 게임 JS 실행됨 / running. WebGL2=' + gl2
+          + (window.__bootMeshed != null ? (' · chunks=' + window.__bootMeshed) : '')
+          + '\n배경이 까many면 GPU/렌더 문제입니다 (진단용 표시).');
+      } else {
+        box('rgba(150,0,0,.92)', '✗ 게임 JS가 실행 안 됨 / bundle did NOT run.\nWebGL2=' + gl2
+          + '\n캐시 가능성 → 시크릿 창 또는 주소 뒤에 ?v=숫자 로 다시 열어보세요.\n' + navigator.userAgent);
+      }
+    }, 4500);
+  })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
