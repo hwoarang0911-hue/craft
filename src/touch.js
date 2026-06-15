@@ -26,17 +26,19 @@ html.touch, html.touch body { touch-action: none; overscroll-behavior: none; }
   -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 #tc .btn.press { background: rgba(255,232,180,.34); border-color: rgba(255,228,165,.95); }
 #tc .btn.on { background: rgba(150,230,160,.32); border-color: rgba(150,230,160,.95); }
-#tc .break { width: 68px; height: 68px; right: 104px; bottom: 108px; }
-#tc .place { width: 60px; height: 60px; right: 24px; bottom: 140px; }
-#tc .jump  { width: 76px; height: 76px; right: 26px; bottom: 30px; }
-#tc .fly   { width: 50px; height: 50px; right: 120px; bottom: 36px; font-size: 11px; }
+#tc .jump  { width: 76px; height: 76px; right: 24px; bottom: 66px; }
+#tc .break { width: 66px; height: 66px; right: 106px; bottom: 92px; }
+#tc .place { width: 58px; height: 58px; right: 28px; bottom: 150px; }
+#tc .fly   { width: 48px; height: 48px; right: 110px; bottom: 168px; font-size: 11px; }
 #tc .joy { position: absolute; width: 124px; height: 124px; border-radius: 50%; display: none;
   border: 2px solid rgba(255,255,255,.18); background: rgba(18,22,30,.26); }
 #tc .knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%;
   background: rgba(255,255,255,.34); transform: translate(-50%, -50%); }
-html.touch #hotbar { z-index: 40; bottom: 20px; }
-html.touch #hotbar .slot { pointer-events: auto; width: 50px; height: 50px; }
-html.touch #hotbar .slot canvas { width: 36px; height: 36px; }
+html.touch #hotbar { bottom: 12px; gap: 3px; padding: 4px; }
+html.touch #hotbar .slot { width: 36px; height: 36px; }
+html.touch #hotbar .slot canvas { width: 28px; height: 28px; }
+html.touch #hotbar .slot .key { display: none; }
+html.touch #topline { display: none; }
 `;
 
 export class TouchControls {
@@ -104,15 +106,24 @@ export class TouchControls {
     this._hold(this.bJump, (v) => { this.player.touchJump = v; });
     this._tap(this.bFly, () => { const on = this.player.toggleFly(); this.bFly.classList.toggle('on', on); });
 
-    document.querySelectorAll('#hotbar .slot').forEach((el, i) => {
-      el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.interact.selectSlot(i); });
-    });
+    // #tc sits above the hotbar, so hotbar taps are detected here by position
+    // rather than on the slot elements (which never receive the touch).
+    this.slots = Array.from(document.querySelectorAll('#hotbar .slot'));
 
     const r = this.root;
     r.addEventListener('touchstart', (e) => this._start(e), { passive: false });
     r.addEventListener('touchmove', (e) => this._move(e), { passive: false });
     r.addEventListener('touchend', (e) => this._end(e), { passive: false });
     r.addEventListener('touchcancel', (e) => this._end(e), { passive: false });
+  }
+
+  // which hotbar slot (if any) is under a screen point, with a little padding
+  _slotAt(x, y) {
+    for (let i = 0; i < this.slots.length; i++) {
+      const b = this.slots[i].getBoundingClientRect();
+      if (x >= b.left - 2 && x <= b.right + 2 && y >= b.top - 12 && y <= b.bottom + 16) return i;
+    }
+    return -1;
   }
 
   _begin() {
@@ -128,6 +139,9 @@ export class TouchControls {
     if (!this.started) { this._begin(); return; }   // first tap starts the game
     const half = window.innerWidth * 0.5;
     for (const t of e.changedTouches) {
+      // tapping a hotbar slot selects that block (don't also move/look)
+      const si = this._slotAt(t.clientX, t.clientY);
+      if (si >= 0) { this.interact.selectSlot(si); continue; }
       if (t.clientX < half && this.joyId === null) {
         this.joyId = t.identifier;
         this.joyBase = { x: t.clientX, y: t.clientY };
