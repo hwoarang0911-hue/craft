@@ -22,10 +22,18 @@ export class Player {
     this.locked = false;
     this.frozen = false;
     this.flying = false;
+    // touch input (driven by TouchControls on mobile)
+    this.isTouch = false;
+    this.touchActive = false;
+    this.touchMove = { f: 0, s: 0 };
+    this.touchJump = false;
 
     camera.rotation.order = 'YXZ';
 
     domElement.addEventListener('click', () => {
+      // Pointer Lock is unavailable on touch devices (iOS Safari); on those
+      // TouchControls starts the game and drives the camera instead.
+      if (this.isTouch) return;
       if (!this.locked && !this.frozen) domElement.requestPointerLock();
     });
     document.addEventListener('pointerlockchange', () => {
@@ -72,9 +80,12 @@ export class Player {
     this.inWater = feet === B.WATER || head === B.WATER;
     this.headInWater = head === B.WATER;
 
-    // input direction in world space
-    const f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
-    const r = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
+    // input direction in world space (keyboard + touch joystick)
+    let f = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
+    let r = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
+    f += this.touchMove.f;
+    r += this.touchMove.s;
+    const jump = this.keys.has('Space') || this.touchJump;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     let ax = (-sin * f + cos * r);
     let az = (-cos * f - sin * r);
@@ -94,7 +105,7 @@ export class Player {
 
     if (this.flying) {
       // creative float: Space up, Shift down, no gravity
-      const up = (this.keys.has('Space') ? 1 : 0)
+      const up = (jump ? 1 : 0)
         - (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 1 : 0);
       this.vel.y += up * 80 * dt;
       this.vel.y *= Math.exp((up === 0 ? -12 : -3) * dt);
@@ -102,11 +113,11 @@ export class Player {
     } else if (this.inWater) {
       this.vel.y -= GRAVITY * 0.22 * dt;
       this.vel.y *= Math.exp(-2.6 * dt);
-      if (this.keys.has('Space')) this.vel.y += 26 * dt;
+      if (jump) this.vel.y += 26 * dt;
       this.vel.y = Math.max(-5, Math.min(5, this.vel.y));
     } else {
       this.vel.y -= GRAVITY * dt;
-      if (this.keys.has('Space') && this.onGround) {
+      if (jump && this.onGround) {
         this.vel.y = 8.2;
         this.onGround = false;
       }
@@ -164,6 +175,13 @@ export class Player {
   syncCamera() {
     this.camera.position.set(this.pos.x, this.pos.y + EYE, this.pos.z);
     this.camera.rotation.set(this.pitch, this.yaw, 0);
+  }
+
+  // touch drag-to-look (pixels -> radians)
+  addLook(dx, dy) {
+    this.yaw -= dx * 0.004;
+    this.pitch -= dy * 0.004;
+    this.pitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, this.pitch));
   }
 
   // would placing a block at cell (x,y,z) intersect the player AABB?

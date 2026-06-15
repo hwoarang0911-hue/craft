@@ -11,6 +11,7 @@ import { SkySystem } from './sky.js';
 import { Post } from './post.js';
 import { Hud } from './hud.js';
 import { Critters } from './entities.js';
+import { TouchControls, isTouchDevice } from './touch.js';
 
 // Signal the HTML boot-watchdog that the game bundle actually started executing.
 window.__bootOK = true;
@@ -65,7 +66,8 @@ try {
   }
 }
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+// cap the pixel ratio harder on phones/tablets to keep the framerate up
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouchDevice() ? 1 : 1.5));
 // Set the renderer look here too, so the post-less fallback path still matches.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.88;
@@ -93,6 +95,8 @@ if (!params.has('nopost')) {
   catch (e) { console.warn('post-processing unavailable, using direct render:', e); }
 }
 const critters = new Critters(scene, world);
+// mobile on-screen controls (no-op on desktop / non-touch)
+const touch = new TouchControls(player, interact);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -412,7 +416,7 @@ function animate() {
   world.update(player.pos);
   if (spawned && !shotMode && world.ready(player.pos)) player.frozen = false;
   player.update(dt, world);
-  if (player.locked || shotMode) interact.update(dt);
+  if (player.locked || player.touchActive || shotMode) interact.update(dt);
   if (spawned && (!shotMode || shotMode === 'zoo' || shotMode === 'fish')) {
     critters.update(dt, player.pos);
   }
@@ -459,6 +463,6 @@ window.__stats = () => {
     time: sky.time,
   };
 };
-window.__app = { world, player, sky, renderer, interact, camera, critters };
+window.__app = { world, player, sky, renderer, interact, camera, critters, touch };
 
 animate();
